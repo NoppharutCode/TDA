@@ -1,0 +1,10 @@
+Metadata-Version: 1.0
+Name: python-openflow
+Version: 1.1.0b1.dev0
+Summary: Library to parse and generate OpenFlow messages
+Home-page: http://github.com/kytos/python-openflow
+Author: Kytos Team
+Author-email: of-ng-dev@ncc.unesp.br
+License: MIT
+Description: UNKNOWN
+Platform: UNKNOWN
