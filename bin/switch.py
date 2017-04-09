@@ -77,7 +77,7 @@ class Switch(object):
         # connect to snmp at switch
         errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
             cmdgen.CommunityData('public'),
-            cmdgen.UdpTransportTarget(('192.168.90.103', 161)),
+            cmdgen.UdpTransportTarget(('192.168.90.110', 161)),
             '1.0.8802.1.1.2.1.3.7',
         )
 
@@ -91,7 +91,6 @@ class Switch(object):
                     )
                 )
             else:
-
                 # init value
                 index = 0
                 name, val = "" , ""
@@ -102,14 +101,14 @@ class Switch(object):
                 # check number of port should > 0
                 if(size > 0):
                     while(index < size):
-                        tempHwAddr = varBindTable[index+3][0][1].prettyPrint()
+                        tempHwAddr = varBindTable[index+size][0][1].prettyPrint()
                         tempHwAddr = tempHwAddr[2:len(tempHwAddr)]
                         if ( len(tempHwAddr) != 12 ) :
                             print("Error")
                         else:
                             tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
-                        
-                        listPort.append(PPort(index + 1, tempHwAddr , varBindTable[index+6][0][1].prettyPrint(), 0, 0, 192 ,0,0,0))
+
+                        listPort.append(PPort(index + 1, tempHwAddr , varBindTable[ index+( size*2 ) ][0][1].prettyPrint(), 0, 0, 192 ,0,0,0))
                         index += 1
                 else:
                     print("Error : switch doesn't have active port")
@@ -170,6 +169,9 @@ class Switch(object):
 
         #send OF_FEATURE_REPLY message
         self.s.send(packed_data)
+
+
+        # tum tong ni yu
         
         # receive OF_FLOW_MOD message
         data = self.s.recv(self.buffer_size)
@@ -255,8 +257,8 @@ class Switch(object):
 
 if __name__ == '__main__':
     tda = Switch('192.168.90.101', 6633, 4096)
-   #tda.firstConnectToSnmp()
-    tda.startConnectToController()
-    num = input()   
-    tda.stopConnectToController()
+    tda.firstConnectToSnmp(111)
+    #tda.startConnectToController()
+    #num = input()   
+    #tda.stopConnectToController()
     
