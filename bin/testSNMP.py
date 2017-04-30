@@ -1,3 +1,4 @@
+"""
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 
 cmdGen = cmdgen.CommandGenerator()
@@ -29,12 +30,13 @@ else:
         else:
             pass
         #print(varBindTable[1][0][1])
-        """
+        
         for varBindTableRow in varBindTable:
             for name, val in varBindTableRow:
                 print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))
                 pass
-        """
+
+"""
 
 """
 from pysnmp.entity.rfc3413.oneliner import cmdgen
@@ -55,3 +57,64 @@ else:
     for name, val in var_binds:
         print('%s = %s' % (name.prettyPrint(),val.prettyPrint()))
 """
+"""
+keyTest = bytes('dpid:0000000000000001', encoding='utf-8')
+in_port = "0001"
+print( int(in_port) )
+"""
+
+"""
+from pysnmp.entity.rfc3413.oneliner import cmdgen
+
+cmdGen = cmdgen.CommandGenerator()
+
+errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
+    cmdgen.UsmUserData('userTest', 'defaultPassword', 'defaultEncryption',
+                       authProtocol=cmdgen.usmHMACMD5AuthProtocol,
+                       privProtocol=cmdgen.usmDESPrivProtocol),
+    cmdgen.UdpTransportTarget(('192.168.90.102', 161)),
+    "1.3.6"
+
+)
+
+if errorIndication:
+    print(errorIndication)
+else:
+    if errorStatus:
+        print('%s at %s' % (
+            errorStatus.prettyPrint(),
+            errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
+            )
+        )
+    else:
+        for varBindTableRow in varBindTable:
+            for name, val in varBindTableRow:
+                print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))
+"""
+"""
+test = "ffffffffffff"
+
+test = int( test , 16 )
+print(test)
+
+
+for i,j in enumerate(range(5,10)):
+    print( str(i) + " " + str(j) )\
+"""
+"""
+import socket
+import sys
+
+s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(4)
+s.connect(('192.168.90.101', 6633))
+
+try :
+    data = s.recv(4096)
+    data = s.recv(4096)
+    print( data )
+except Exception as err:
+    print( "Handling run-time error : " + err )
+"""
+
+

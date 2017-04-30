@@ -8,6 +8,7 @@ import socket
 import struct
 import binascii
 import sys
+import threading
 
 from pyof.v0x01.controller2switch.features_request import FeaturesRequest as FeaReq
 from pyof.v0x01.controller2switch.features_reply import FeaturesReply as FeaRes
@@ -26,25 +27,36 @@ from lldp import lldp
 
 from pysnmp.entity.rfc3413.oneliner import cmdgen
 
-class Switch(object):
 
-    def __init__(self,ip,port,buffer_size):
+class Switch(threading.Thread):
 
+    def __init__( self , controllerIp , controllerPort , buffer_size , switchIp ):
+
+        threading.Thread.__init__(self)
         # set init value
-        self.ip = ip
-        self.port = port
-        self.buffer_size = buffer_size
+        self.controllerIp = controllerIp
+        self.controllerPort = int(controllerPort)
+        self.buffer_size = int(buffer_size)
+        self.switchIp = switchIp
+        self.listActivePort = {}
+        self.listRemoteDataFromPort = {}
+        self.numberOfRetransmission = 3
 
+        #show ip of switch
+        print( "Switch IP : " + self.switchIp + " Start!!!!" )
+
+        """
         #show ip and port of controlller
-        print("controller ip : " + str(self.ip))
-        print("controller port : " + str(self.port)) 
+        print("controller ip : " + str(self.controllerIp))
+        print("controller port : " + str(self.controllerPort)) 
+        """
 
-    def createLLDPPacket(self, srcEthernet, chassis_id, port_id):
+    def createLLDPPacket(self, srcEthernet, chassis_id, port_id, in_port):
 
         # create LLDP frame
         lldp_data = lldpMsg()
-        lldp_data.chassis_id = tlvLLDP(1, 7,binaryData(b'\x64\x70\x69\x64\x3a\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x31'))
-        lldp_data.port_id = tlvLLDP(2, 2, binaryData(b'\x00\x00\x00\x01'))
+        lldp_data.chassis_id = tlvLLDP(1, 7,binaryData(chassis_id))
+        lldp_data.port_id = tlvLLDP(2, 2, binaryData(port_id))
         lldp_data = lldp_data.pack()
 
         # create etherner frame
@@ -59,14 +71,14 @@ class Switch(object):
         packed_data = pI()
         packed_data.header.xid = 0
         packed_data.buffer_id = 4294967295
-        packed_data.in_port = 1
+        packed_data.in_port = in_port
         packed_data.reason = pIR.OFPR_ACTION
         packed_data.data = ethernet_data
         packed_data.total_len = packed_data.get_size()-8
         packed_data = packed_data.pack()
         return packed_data
 
-    def firstConnectToSnmp(self, tranID):
+    def createOFFeatureReplyFromSnmp(self, tranID, mininetOption):
 
         # list port
         listPort = []
@@ -77,8 +89,9 @@ class Switch(object):
         # connect to snmp at switch
         errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
             cmdgen.CommunityData('public'),
-            cmdgen.UdpTransportTarget(('192.168.90.110', 161)),
-            '1.0.8802.1.1.2.1.3.7',
+            cmdgen.UdpTransportTarget((self.switchIp, 161)),
+            '1.0.8802.1.1.2.1.3.7.1.3',
+            '1.0.8802.1.1.2.1.3.7.1.4'
         )
 
         if errorIndication:
@@ -92,31 +105,63 @@ class Switch(object):
                 )
             else:
                 # init value
-                index = 0
-                name, val = "" , ""
+                index = 1
 
                 # number of port
-                size = (int)(len(varBindTable)/3)
+                if mininetOption == 1:
+                    del varBindTable[ len(varBindTable) - 1 ]
 
                 # check number of port should > 0
-                if(size > 0):
-                    while(index < size):
-                        tempHwAddr = varBindTable[index+size][0][1].prettyPrint()
-                        tempHwAddr = tempHwAddr[2:len(tempHwAddr)]
-                        if ( len(tempHwAddr) != 12 ) :
-                            print("Error")
-                        else:
-                            tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
+                if( len(varBindTable) > 0 ):
 
-                        listPort.append(PPort(index + 1, tempHwAddr , varBindTable[ index+( size*2 ) ][0][1].prettyPrint(), 0, 0, 192 ,0,0,0))
+                    for i in varBindTable :
+                        
+                        # mac address
+                        tempHwAddr = i[0][1].prettyPrint()
+                        tempHwAddr = tempHwAddr[2:len(tempHwAddr)]
+
+                        if ( len(tempHwAddr) != 12 ) :
+                            print("Error invalid mac address from local port in snmp")
+                        else:
+
+                            tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
+                            self.listActivePort[tempHwAddr] = [str(i[0][0][-1]),index] # type interger chage to str
+
+                            """
+                            print("key : " + tempHwAddr)
+                            print("index 0 : " + str(i[0][0][-1]) )
+                            print("index 1 : " + str(index) )
+                            """
+
+                            """
+                                key : mac address ( ff:ff:ff:ff:ff:ff )
+                                index 0 : poistion of active port in snmp (2)
+                                index 1 : in_port (1)
+                            """
+                        listPort.append(PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0))
                         index += 1
+
                 else:
                     print("Error : switch doesn't have active port")
             
+            
 
+            print("All active port of switch ip " + self.switchIp +  " : ")
             for i in listPort:
                 print("Hw_addr : " + i.hw_addr)
                 print("Hw_desc : " + i.name)
+
+        
+
+        # find max value of mac address from list mac address
+        maxPort = "000000000000"
+        maxIndex = 0
+        
+        for index , item in enumerate( listPort ):
+            tempMac = item.hw_addr.replace(":","")
+            if ( int( tempMac , 16 ) > int( maxPort , 16 ) ):
+                maxPort = tempMac
+                maxIndex = index
 
         
         # create OF_FEATURE_REPLY message
@@ -124,7 +169,7 @@ class Switch(object):
         packed_data.header.xid = tranID
 
         # gen datapath_id from hw_addr of first port
-        packed_data.datapath_id = listPort[0].hw_addr + ":ff:ff"
+        packed_data.datapath_id = listPort[maxIndex].hw_addr + ":ff:ff"
         #packed_data.datapath_id = '00:00:00:00:00:00:00:02'
 
         packed_data.n_buffers = 256
@@ -140,48 +185,208 @@ class Switch(object):
 
         return packed_data
         
-    
-    def startConnectToController(self):
+    def receiveRemoteSwitchDataFromSnmp(self):
+        cmdGen = cmdgen.CommandGenerator()
 
-        # create socket and connection to controller
-        self.s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect((self.ip, self.port))
-        print("create socket success!!!")
+        errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
+            cmdgen.CommunityData('public'),
+            cmdgen.UdpTransportTarget((self.switchIp, 161)),
+            '1.0.8802.1.1.2.1.4.1.1.5',
+            '1.0.8802.1.1.2.1.4.1.1.7'
+        )
+
+        if errorIndication:
+            print(errorIndication)
+        else:
+            if errorStatus:
+                print('%s at %s' % (
+                    errorStatus.prettyPrint(),
+                    errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
+                    )
+                )
+            else:
+
+                tempPortID = ""
+
+                for i in varBindTable:
+
+                    tempPortID = i[1][1].prettyPrint()[2:] # 00000001
+
+                    # change 00000001 to \x00\x00\x00\x01
+                    packer = struct.Struct('bbbb')
+                    binaryPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                    
+                    """ 
+                        key = poistion of active port at recvice remote data in snmp (int : 2)
+                        index 0 = datapath id (str : dpid:0000000000000001)
+                        index 1 = port id (binary : b'\x00\x00\x00\x01')
+                    """
+                    self.listRemoteDataFromPort[str(i[0][0][-2])] = [ i[0][1].prettyPrint() , binaryPortID ]
+
+                    """
+                    print( "key : " + str(i[0][0][-2]) )
+                    print( "index 0 : " + i[0][1].prettyPrint() )
+                    print( "index 1 : " + str(packed_encode) )
+                    """
+
+    def receiveDataFromSocket(self):
+        
+        data = None
+        count = 0
+        while count < self.numberOfRetransmission :
+            try :
+                data = self.s.recv(self.buffer_size)
+                return data
+            except Exception as err:
+                count += 1
+                print( " Switch ip " + self.switchIp + " handling run-time error of socket : " + str( err ) )
+        
+        print( " Switch ip " + self.switchIp + " terminate" )
+        sys.exit()
+        
+    
+
+    def sendAndReceiveOF_HELLO(self):
+
+        count = 0
 
         # create OF_HEllO message
         packed_data = Hello().pack()
 
-        # send OF_HEllO message to contoller
-        self.s.send(packed_data)
+        while count < self.numberOfRetransmission :
+            try:
 
-        # receive OF_HELLO message
-        data = self.s.recv(self.buffer_size)
+                # send OF_HEllO message to contoller
+                self.s.send(packed_data)
+                print( "Switch ip " + self.switchIp + " Send OF_HELLO message to controller")
 
-        # receive OF_FEATURE_REQUEST message
-        data = self.s.recv(self.buffer_size)
+                # receive OF_HELLO message from controller
+                data = self.s.recv(self.buffer_size)
+                data = unpack_message(data)
 
-        # get tranID from OF_FEATURE_REQUEST message
-        packer = struct.Struct('HHI')
-        packed_decode = packer.unpack(data)
-        tranID = packed_decode[2]
+                if data.header.message_type.name == "OFPT_HELLO" :
+                    print( "Switch ip " + self.switchIp + " Receive OF_HELLO message from controller")    
+                    return
 
-        packed_data = self.firstConnectToSnmp(tranID)
+            except Exception as err : 
+                count += 1
+                print( " Switch ip " + self.switchIp + " handling run-time error of socket : " + err )
+            
+            print( " Switch ip " + self.switchIp + " terminate" )
+            sys.exit()
 
-        #send OF_FEATURE_REPLY message
-        self.s.send(packed_data)
+    def sendAndReceiveOF_FEATURE(self):
 
+        try : 
+            # receive OF_FEATURE_REQUEST message
+            data = self.receiveDataFromSocket()
+            print( "Switch ip " + self.switchIp + " Receive OF_FEATURE_REQUEST message from controller")
+            data = unpack_message(data)
 
-        # tum tong ni yu
+            if  data.header.message_type.name != "OFPT_FEATURES_REQUEST" :
+                print( " Switch ip " + self.switchIp + " terminate because switch don't receive OF_FEATURES_REQUEST" )
+                sys.exit()
+
+            # get tranID from OF_FEATURE_REQUEST message
+            tranID = data.header.xid
+
+            
+            #send OF_FEATURE_REPLY message
+            packed_data = self.createOFFeatureReplyFromSnmp(tranID , 1 )
+            self.s.send(packed_data)
+            print("Send OF_FEATURE_REPLY message to controller")
+
+        except Exception as err :
+            print( " Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
+            sys.exit()
+
         
+
+    def startConnectToController(self):
+
+        # create socket and connection to controller
+        self.s =  socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # sock.setimeout
+        self.s.settimeout(4)
+        self.s.connect((self.controllerIp, self.controllerPort))
+        print("Switch ip " + self.switchIp + " create socket success!!!")
+
+        # OF_HELLO switch <-> controller
+        self.sendAndReceiveOF_HELLO()
+
+        # OF_FEATURE switch <-> controller
+        self.sendAndReceiveOF_FEATURE()
+        
+
+
+        """
         # receive OF_FLOW_MOD message
         data = self.s.recv(self.buffer_size)
         data = unpack_message(data)
         print(data)
+        """
 
-        # receive OF_PACKET_OUT message
-        data = self.s.recv(self.buffer_size)
-        data = unpack_message(data)
+        self.receiveRemoteSwitchDataFromSnmp()
 
+
+        while(1):
+            # receive OF_PACKET_OUT message
+            data = self.s.recv(self.buffer_size)
+            data = unpack_message(data)
+
+
+            if data.header.message_type.name == "OFPT_PACKET_OUT":
+                
+                # ethernet header of lldp
+                ethernetH = data.data.value
+                ethernetH = lldp.unpack_ethernet_frame(ethernetH)
+                # get Src from ethernet header
+                temp = ethernetH[2] # tuple
+                temp = list(map(str, temp)) # tuple to list
+                srcEthernet = ""
+                hexNumberTemp = ""
+                for i in temp:
+                    hexNumberTemp = hex(int(i))[2:] # change number to Hex cut 0x out
+                    if(len(hexNumberTemp) == 1):
+                        srcEthernet  += "0" + hexNumberTemp
+                    else:
+                        srcEthernet += hexNumberTemp
+                    srcEthernet += ":"
+
+                srcEthernet = srcEthernet[0: len(srcEthernet)-1] # src ethernet
+                
+                #print(srcEthernet)
+
+                chassis_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][0]
+                port_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][1]
+                in_port = self.listActivePort[srcEthernet][1]
+
+                #print(port_id)
+               
+                self.s.send( self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id ,  in_port ) )
+            else:
+                print( "Receive Of_message :  " + data.header.message_type.name)
+
+    def stopConnectToController(self):
+        self.s.close()
+
+    def run(self):
+        try:
+            self.startConnectToController()
+        finally:
+            self.stopConnectToController()
+
+        # ethernet payload of lldp
+        """
+        ethernetP = ethernetH[4]
+        ethernetP = lldp.unpack_lldp_frame(ethernetP)
+        list_TLV = []
+        for i in ethernetP:
+            list_TLV.append(i)
+        print(list_TLV[1])
+        """
+        #self.s.send(self.createLLDPPacket( srcEthernet, bytes('dpid:0000000000000001', encoding='utf-8'), list_TLV[1]))
+        """
         # ethernet header of lldp
         ethernetH = data.data.value
         ethernetH = lldp.unpack_ethernet_frame(ethernetH)
@@ -189,21 +394,28 @@ class Switch(object):
         temp = ethernetH[2] # tuple
         temp = list(map(str, temp)) # tuple to list
         srcEthernet = ""
+        hexNumberTemp = ""
         for i in temp:
-            if(len(i)== 1):
-                srcEthernet += "0"
-            srcEthernet += i +":"
+            hexNumberTemp = hex(int(i))[2:] # change number to Hex cut 0x out
+            if(len(hexNumberTemp) == 1):
+                srcEthernet  += 0 + hexNumberTemp
+            else:
+                srcEthernet += hexNumberTemp
+            srcEthernet += ":"
+
+        
         srcEthernet = srcEthernet[0: len(srcEthernet)-1] # src ethernet
+        print(srcEthernet)
         # ethernet payload of lldp
         ethernetP = ethernetH[4]
         ethernetP = lldp.unpack_lldp_frame(ethernetP)
         list_TLV = []
         for i in ethernetP:
             list_TLV.append(i)
+        self.s.send(self.createLLDPPacket( srcEthernet, bytes('dpid:0000000000000001', encoding='utf-8'), list_TLV[1]))
+        """
 
         """
-        self.s.send(self.createLLDPPacket( srcEthernet, list_TLV[0], list_TLV[1]))
-
         while(1):
             data = self.s.recv(self.buffer_size)
             self.s.send(self.createLLDPPacket( srcEthernet, list_TLV[0], list_TLV[1]))
@@ -213,7 +425,7 @@ class Switch(object):
         #b'\x64\x70\x69\x64\x3a\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x33'
         # create LLDP message
         lldp_data = lldpMsg()
-        lldp_data.chassis_id = tlvLLDP(1, 7,binaryData(b'\x64\x70\x69\x64\x3a\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x30\x31'))
+        lldp_data.chassis_id = tlvLLDP(1, 7,binaryData(b'dpid:0000000000000001'))
         lldp_data.port_id = tlvLLDP(2, 2, binaryData(b'\x00\x00\x00\x01'))
         lldp_data = lldp_data.pack()
         # create EthernerFrame message
@@ -250,15 +462,15 @@ class Switch(object):
         packed_decode = packer.unpack_from(data)
         print(packed_decode)
         """
-        
 
-    def stopConnectToController(self):
-        self.s.close()
 
 if __name__ == '__main__':
-    tda = Switch('192.168.90.101', 6633, 4096)
-    tda.firstConnectToSnmp(111)
-    #tda.startConnectToController()
-    #num = input()   
-    #tda.stopConnectToController()
+    tda = Switch('192.168.90.101', 6633, 8192, '192.168.90.110')
+    #tda.createOFFeatureReplyFromSnmp(111,1)
+    tda.startConnectToController()
+    num = input()   
+    tda.stopConnectToController()
+
+
+
     
