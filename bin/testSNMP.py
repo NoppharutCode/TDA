@@ -114,7 +114,13 @@ try :
     data = s.recv(4096)
     print( data )
 except Exception as err:
-    print( "Handling run-time error : " + err )
+    print( "Handling run-time error : " + str(err) )
 """
+test = {}
+
+print(test["test"])
+
+
+
 
 
