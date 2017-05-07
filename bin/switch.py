@@ -23,6 +23,9 @@ from pyof.foundation.network_types import TLVWithSubType as tlvLLDP
 from pyof.foundation.basic_types import DPID as dpid
 from pyof.foundation.basic_types import BinaryData as binaryData
 
+from pyof.v0x01.asynchronous.port_status import PortStatus as portStatus
+from pyof.v0x01.asynchronous.port_status import PortReason as portReason
+
 from lldp import lldp
 
 from pysnmp.entity.rfc3413.oneliner import cmdgen
@@ -31,6 +34,8 @@ from pysnmp.entity.rfc3413.oneliner import cmdgen
 class Switch(threading.Thread):
 
     def __init__( self , controllerIp , controllerPort , buffer_size , switchIp , communityString="public"):
+
+
 
         threading.Thread.__init__(self)
         # set init value
@@ -143,9 +148,10 @@ class Switch(threading.Thread):
                                 if ( len(tempHwAddr) != 12 ) :
                                     print("Error invalid mac address from local port in snmp")
                                 else:
-
+                                    
                                     tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
-                                    self.listActivePort[tempHwAddr] = [str(i[0][0][-1]),index] # type interger chage to str
+                                    tempPPort = PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
+                                    self.listActivePort[tempHwAddr] = [ str(i[0][0][-1]) , index , tempPPort ] # type interger chage to str
 
                                     """
                                     print("key : " + tempHwAddr)
@@ -158,9 +164,11 @@ class Switch(threading.Thread):
                                         index 0 : poistion of active port in snmp (2)
                                         index 1 : in_port (1)
                                     """
-                                listPort.append(PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0))
+                                listPort.append( tempPPort )
                                 index += 1
-                   
+                            
+                            print("Acive port list :")
+                            print(self.listActivePort)
                             return listPort
 
                         else:
@@ -175,6 +183,8 @@ class Switch(threading.Thread):
         
         print( " Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
         sys.exit()
+
+
 
         """
         try :
@@ -279,6 +289,8 @@ class Switch(threading.Thread):
                         print( "index 0 : " + i[0][1].prettyPrint() )
                         print( "index 1 : " + str(packed_encode) )
                         """
+                    print("remote port list : ")
+                    print(self.listRemoteDataFromPort)
                     return
             # </snmpv2c>
         except Exception as err :
@@ -327,7 +339,7 @@ class Switch(threading.Thread):
 
             except Exception as err : 
                 count += 1
-                print( " 322 Switch ip " + self.switchIp + " handling run-time error of socket : " + err )
+                print( " 322 Switch ip " + self.switchIp + " handling run-time error of socket : " + str(err) )
             
             print( " Switch ip " + self.switchIp + " terminate" )
             sys.exit()
@@ -415,17 +427,23 @@ class Switch(threading.Thread):
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
 
+        packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=self.listActivePort["08:00:27:40:7e:7f"][2] )
+        packed_data = packed_data.pack()
+        self.s.send( packed_data )
+        
         """
         # receive OF_FLOW_MOD message
         data = self.s.recv(self.buffer_size)
         data = unpack_message(data)
         print(data)
         """
-        self.receiveRemoteSwitchDataFromSnmpVersion2C()
+
+        #self.receiveRemoteSwitchDataFromSnmpVersion2C()
+
         # init value
         data = None
 
-
+        
         while(1):
 
             count = 0
@@ -444,7 +462,9 @@ class Switch(threading.Thread):
                 sys.exit()
         
             if data.header.message_type.name == "OFPT_PACKET_OUT":
-                
+
+                #self.receiveRemoteSwitchDataFromSnmpVersion2C()
+
                 # ethernet header of lldp
                 ethernetH = data.data.value
                 ethernetH = lldp.unpack_ethernet_frame(ethernetH)
@@ -468,7 +488,16 @@ class Switch(threading.Thread):
                 
 
                 #print(srcEthernet)
+                """
+                chassis_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][0]
+                port_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][1]
+                in_port = self.listActivePort[srcEthernet][1]
 
+                ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
+
+                self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( ethernet_data , in_port)
+                """
+                
                 # send Packet_IN contain lldp frame
                 try :
                     chassis_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][0]
@@ -481,8 +510,8 @@ class Switch(threading.Thread):
                     
                 except Exception as err:
                     print( " 431 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
-
-
+                
+        
     def startConnectToController(self):
 
         # create socket and connection to controller
@@ -593,7 +622,7 @@ class Switch(threading.Thread):
 
 
 if __name__ == '__main__':
-    tda = Switch('192.168.90.101', 6633, 8192, '192.168.90.110')
+    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.12')
     #tda.createOFFeatureReplyFromSnmp(111,1)
     tda.startConnectToController()
     num = input()   
