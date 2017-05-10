@@ -116,11 +116,79 @@ try :
 except Exception as err:
     print( "Handling run-time error : " + str(err) )
 """
+"""
 test = {}
 
 print(test["test"])
+"""
+"""
+test = []
+test.append(10)
+test.append(11)
+test.append(12)
+test.append(13)
+test.append(14)
+test.remove(12)
+test.append(12)
+test.sort()
+
+for i in test:
+    print(i)
+"""
+"""
+from pysnmp.entity.rfc3413.oneliner import cmdgen
+
+cmdGen = cmdgen.CommandGenerator()
+
+errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
+    cmdgen.CommunityData('public'),
+    cmdgen.UdpTransportTarget(('192.168.0.12', 161)),
+    '1.0.8802.1.1.2.1.4.1.1.5',
+    '1.0.8802.1.1.2.1.4.1.1.7'
+)
+
+if errorIndication:
+    print(errorIndication)
+else:
+    if errorStatus:
+        print('%s at %s' % (
+            errorStatus.prettyPrint(),
+            errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
+            )
+        )
+    else:
+        for varBindTableRow in varBindTable:
+            for name, val in varBindTableRow:
+                print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))
+"""
+
+"""
+
+class Test1(object):
+
+    def __init__(self):
+        self.one = 1
+        self.two = 2
 
 
+class Test2(Test1):
+
+    def __init__(self):
+        self.three = 3
+        self.four = 4
 
 
+test = Test1()
+print(dir(test))
+"""
+"""
+b'\x01\x00\x00\x08gW\x16\xda'
+<class 'bytes'>
+"""
+
+data = b'\x01\x00\x00\x08gW\x16\xda'
+
+
+print(data[5:])
+print( type(data) )
 

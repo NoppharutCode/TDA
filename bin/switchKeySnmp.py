@@ -12,11 +12,12 @@ import threading
 
 from pyof.v0x01.controller2switch.features_request import FeaturesRequest as FeaReq
 from pyof.v0x01.controller2switch.features_reply import FeaturesReply as FeaRes
+
 from pyof.v0x01.symmetric.hello import Hello as Hello
 from pyof.v0x01.common.phy_port import PhyPort as PPort
 from pyof.v0x01.asynchronous.packet_in import PacketIn as pI
 from pyof.v0x01.asynchronous.packet_in import PacketInReason as pIR
-
+from pyof.v0x01.common.utils import unpack_message
 from pyof.foundation.network_types import Ethernet as ethernet
 from pyof.foundation.network_types import LLDP as lldpMsg
 from pyof.foundation.network_types import TLVWithSubType as tlvLLDP
@@ -26,7 +27,7 @@ from pyof.foundation.basic_types import BinaryData as binaryData
 from pyof.v0x01.asynchronous.port_status import PortStatus as portStatus
 from pyof.v0x01.asynchronous.port_status import PortReason as portReason
 
-from pyof.v0x01.common.utils import unpack_message
+from pyof.v0x01.symmetric.echo_reply import EchoReply as echoReply
 
 from lldp import lldp
 
@@ -132,7 +133,7 @@ class Switch(threading.Thread):
                         count += 1
                     else:
                         # init value
-                        index = 10
+                        index = 1
                         
                         # number of port
                         if mininetOption == 1 and len( varBindTable ) > 0 :
@@ -153,7 +154,7 @@ class Switch(threading.Thread):
                                     
                                     tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
                                     tempPPort = PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
-                                    self.listActivePort[tempHwAddr] = [ str(i[0][0][-1]) , index , tempPPort ] # type interger chage to str
+                                    self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
 
                                     """
                                     print("key : " + tempHwAddr)
@@ -168,9 +169,11 @@ class Switch(threading.Thread):
                                     """
                                 listPort.append( tempPPort )
                                 index += 1
-                            
+                            """
                             print("Acive port list :")
-                            print(self.listActivePort)
+                            for key, port in self.listActivePort.items():
+                                print( str(port) + " port_no : " + str(port.port_no ) )
+                            """
                             return listPort
 
                         else:
@@ -183,7 +186,7 @@ class Switch(threading.Thread):
                 print( " 165 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
 
         
-        print( " 186 Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
+        print( " Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
         sys.exit()
 
 
@@ -324,7 +327,6 @@ class Switch(threading.Thread):
         # create OF_HEllO message
         packed_data = Hello().pack()
 
-
         while count < self.numberOfRetransmission :
             try:
 
@@ -427,42 +429,15 @@ class Switch(threading.Thread):
         # OF_HELLO switch <-> controller
         self.sendAndReceiveOF_HELLO_OPENFLOWV1()
 
-
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
 
-        """
-        num = input()
-        port = self.listActivePort["06:fd:e2:ae:ab:60"][2]
-        print( "delete port : " + str(port.port_no))
-        packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
-        packed_data = packed_data.pack()
-        self.s.send( packed_data )
 
-        num = input()
-        port.port_no = 10
-        print( "add port : " + str(port.port_no))
-        packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
-        packed_data = packed_data.pack()
-        self.s.send( packed_data )      
-        
-        return
-        """
-
-        
-        """
-        # receive OF_FLOW_MOD message
-        data = self.s.recv(self.buffer_size)
-        data = unpack_message(data)
-        print(data)
-        """
-
-        self.receiveRemoteSwitchDataFromSnmpVersion2C()
+        #self.receiveRemoteSwitchDataFromSnmpVersion2C()
 
         # init value
         data = None
 
-        
         while(1):
 
             count = 0
@@ -481,9 +456,13 @@ class Switch(threading.Thread):
                 sys.exit()
         
             if data.header.message_type.name == "OFPT_PACKET_OUT":
+                
 
-                #self.receiveRemoteSwitchDataFromSnmpVersion2C()
 
+                print (dir(data.actions[0]))
+
+                self.receiveRemoteSwitchDataFromSnmpVersion2C()
+                
                 # ethernet header of lldp
                 ethernetH = data.data.value
                 ethernetH = lldp.unpack_ethernet_frame(ethernetH)
@@ -504,15 +483,6 @@ class Switch(threading.Thread):
 
                 srcEthernet = srcEthernet[0: len(srcEthernet)-1] # src ethernet
                 #print(srcEthernet)
-                """
-                chassis_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][0]
-                port_id = self.listRemoteDataFromPort[self.listActivePort[srcEthernet][0]][1]
-                in_port = self.listActivePort[srcEthernet][1]
-
-                ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
-
-                self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( ethernet_data , in_port)
-                """
                 
                 # send Packet_IN contain lldp frame
                 try :
@@ -529,7 +499,9 @@ class Switch(threading.Thread):
 
             if data.header.message_type.name == "OFPT_ECHO_REQUEST":
                 print("OFPT_ECHO_REQUEST")
-                
+                packet = echoReply().pack()
+                self.s.send(packet)
+
                 
         
     def startConnectToController(self):
@@ -642,7 +614,7 @@ class Switch(threading.Thread):
 
 
 if __name__ == '__main__':
-    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104')
+    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.12')
     #tda.createOFFeatureReplyFromSnmp(111,1)
     tda.startConnectToController()
     num = input()   
