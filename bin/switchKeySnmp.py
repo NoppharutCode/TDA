@@ -154,26 +154,22 @@ class Switch(threading.Thread):
                                     
                                     tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
                                     tempPPort = PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
+
                                     self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
 
                                     """
-                                    print("key : " + tempHwAddr)
-                                    print("index 0 : " + str(i[0][0][-1]) )
-                                    print("index 1 : " + str(index) )
+                                    print("key : " + str(i[0][0][-1]) )
+                                    print("item  : " + tempPPort )
+                                    
                                     """
 
                                     """
-                                        key : mac address ( ff:ff:ff:ff:ff:ff )
-                                        index 0 : poistion of active port in snmp (2)
-                                        index 1 : in_port (1)
+                                        key : poistion of active port in snmp (2)
+                                        item : PPort(object)
                                     """
                                 listPort.append( tempPPort )
                                 index += 1
-                            """
-                            print("Acive port list :")
-                            for key, port in self.listActivePort.items():
-                                print( str(port) + " port_no : " + str(port.port_no ) )
-                            """
+
                             return listPort
 
                         else:
@@ -412,17 +408,80 @@ class Switch(threading.Thread):
             print( " 387 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
             sys.exit()
 
-    def sendLLDPInOF_PACKET_IN_OPENFLOWV1( self , ethernet_data , in_port ):
-        # create OF_PACKET_IN message
-        packed_data = pI()
-        packed_data.header.xid = 0
-        packed_data.buffer_id = 4294967295
-        packed_data.in_port = in_port
-        packed_data.reason = pIR.OFPR_ACTION
-        packed_data.data = ethernet_data
-        packed_data.total_len = packed_data.get_size()-8
-        packed_data = packed_data.pack()
-        self.s.send( packed_data )
+    def searchSnmpPosition(self, portNumber):
+        for key , port in self.listActivePort.items() :
+            if port.port_no == portNumber :
+                return key , port
+                #print("key : " + key + " port : " + str(port) + " hw_addr : " + str(port.hw_addr) +" port_no : " + str(port.port_no))
+        return None, None
+
+    def sendLLDPInOF_PACKET_IN_OPENFLOWV1( self, data ):
+
+        try :
+            # ethernet header of lldp
+            ethernetH = data.data.value
+            ethernetH = lldp.unpack_ethernet_frame(ethernetH)
+
+            # check paket is lldp
+            if ethernetH[3] != 35020 :
+                return True
+
+
+
+            # get Src from ethernet header
+            temp = ethernetH[2] # tuple
+            temp = list(map(str, temp)) # tuple to list
+
+            srcEthernet = ""
+            hexNumberTemp = ""
+            for i in temp:
+                hexNumberTemp = hex(int(i))[2:] # change number to Hex cut 0x out
+                if(len(hexNumberTemp) == 1):
+                    srcEthernet  += "0" + hexNumberTemp
+                else:
+                    srcEthernet += hexNumberTemp
+                srcEthernet += ":"
+
+            srcEthernet = srcEthernet[0: len(srcEthernet)-1] # src ethernet
+            #print(srcEthernet)
+
+            #print(data.actions[0].port)
+
+            snmpPosition, tempPort = self.searchSnmpPosition(data.actions[0].port)
+            #print(dir(tempPort))
+            """
+            for key , port in self.listActivePort.items():
+                print("snmp poisition : " + key + " port : " + port.hw_addr)
+            """
+            """
+            if snmpPosition == "5" :
+                print("snmpposition : " + snmpPosition + " port : " + str(tempPort.hw_addr))
+            """
+
+            # send Packet_IN contain lldp frame
+            chassis_id = self.listRemoteDataFromPort[snmpPosition][0]
+            port_id = self.listRemoteDataFromPort[snmpPosition][1]
+            in_port = tempPort.port_no
+
+            ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
+
+            # create OF_PACKET_IN message
+            packed_data = pI()
+            packed_data.header.xid = 0
+            packed_data.buffer_id = 4294967295
+            packed_data.in_port = in_port
+            packed_data.reason = pIR.OFPR_ACTION
+            packed_data.data = ethernet_data
+            packed_data.total_len = packed_data.get_size()-8
+            packed_data = packed_data.pack()
+
+            # OF_PACKET_IN -> controller
+            self.s.send( packed_data )
+
+        except Exception as err:
+            print( " 514 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
+
+
 
 
     def openflowV1(self):
@@ -432,6 +491,7 @@ class Switch(threading.Thread):
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
 
+        
 
         #self.receiveRemoteSwitchDataFromSnmpVersion2C()
 
@@ -457,19 +517,22 @@ class Switch(threading.Thread):
         
             if data.header.message_type.name == "OFPT_PACKET_OUT":
                 
-
-
-                print (dir(data.actions[0]))
-
                 self.receiveRemoteSwitchDataFromSnmpVersion2C()
-                
+
+                # OF_PACKET_IN -> controller
+                check = self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( data )
+
+
+
+                """
+          
                 # ethernet header of lldp
                 ethernetH = data.data.value
                 ethernetH = lldp.unpack_ethernet_frame(ethernetH)
                 # get Src from ethernet header
                 temp = ethernetH[2] # tuple
                 temp = list(map(str, temp)) # tuple to list
-
+             
                 srcEthernet = ""
                 hexNumberTemp = ""
 
@@ -483,6 +546,8 @@ class Switch(threading.Thread):
 
                 srcEthernet = srcEthernet[0: len(srcEthernet)-1] # src ethernet
                 #print(srcEthernet)
+
+           
                 
                 # send Packet_IN contain lldp frame
                 try :
@@ -496,7 +561,7 @@ class Switch(threading.Thread):
                     print( " packet_in ")
                 except Exception as err:
                     print( " 514 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
-
+                """
             if data.header.message_type.name == "OFPT_ECHO_REQUEST":
                 print("OFPT_ECHO_REQUEST")
                 packet = echoReply().pack()
@@ -614,7 +679,7 @@ class Switch(threading.Thread):
 
 
 if __name__ == '__main__':
-    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.12')
+    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104')
     #tda.createOFFeatureReplyFromSnmp(111,1)
     tda.startConnectToController()
     num = input()   

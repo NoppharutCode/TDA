@@ -186,9 +186,15 @@ b'\x01\x00\x00\x08gW\x16\xda'
 <class 'bytes'>
 """
 
+"""
 data = b'\x01\x00\x00\x08gW\x16\xda'
 
 
 print(data[5:])
 print( type(data) )
+"""
 
+dic = { "1" : "one" , "2" : "two" }
+
+for key, value in dic.items():
+    print("key : " + key + " value : " + value)
