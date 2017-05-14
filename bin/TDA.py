@@ -3,7 +3,7 @@ Created on Mon Jan 02 20:18:09 2017
 
 @author: Noppharut
 """
-import switch
+import switchKeySnmp
 
 
 if __name__ == '__main__':
@@ -12,6 +12,7 @@ if __name__ == '__main__':
 
     try:
         f = open("TDAConfig.txt")
+        print("5555")
         controllerIP = f.readline()
         controllerIP =  controllerIP.split("=")
         controllerIP = controllerIP[1].strip()
@@ -19,20 +20,22 @@ if __name__ == '__main__':
         controllerPort = controllerPort.split("=")
         controllerPort = controllerPort[1].strip()
         
-        f.close()
-
+        
+        
         for switchIP in f:
-            thread = switch.Switch( controllerIP , int(controllerPort) , 8192 , switchIP  )
+            print(switchIP)
+            thread = switchKeySnmp.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","")  )
             thread.start()
             threads.append(thread)
         
 
         for t in threads:
             t.join()
-
+        
     except Exception as err:
-        print( "Handling run-time error : " + err )
+        print( "Handling run-time error : " + str(err) )
 
+    f.close()  
 
 
 """

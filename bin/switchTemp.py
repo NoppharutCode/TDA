@@ -410,11 +410,10 @@ class Switch(threading.Thread):
 
     def initConnectionToController(self):
 
-        count = 0
 
         while count < self.numberOfRetransmission :
             try:
-                packed_data = Hello().pack()
+
                 # send OF_HEllO message to contoller
                 self.s.send(packed_data)
                 print( "Switch ip " + self.switchIp + " Send OF_HELLO message to controller")
@@ -424,69 +423,18 @@ class Switch(threading.Thread):
                 data = unpack_message(data)
 
                 if data.header.message_type.name == "OFPT_HELLO" :
+                    print( "Switch ip " + self.switchIp + " Receive OF_HELLO message from controller")    
+                    return
 
-                    print( "Switch ip " + self.switchIp + " Receive OF_HELLO message from controller")
-                    data = self.s.recv(self.buffer_size)
-                    data = unpack_message(data)
-                    print( " 428 Switch ip " + self.switchIp + " Receive OF_FEATURE_REQUEST message from controller")
-                    if  data.header.message_type.name == "OFPT_FEATURES_REQUEST" :
-
-                        # get tranID from OF_FEATURE_REQUEST message
-                        tranID = data.header.xid
-
-                        
-                        #send OF_FEATURE_REPLY message
-                        listPort = self.createOFFeatureReplyFromSnmpVersion2C( 1 )
-
-
-                        print("All active port of switch ip " + self.switchIp +  " : ")
-                        for i in listPort:
-                            print("Hw_addr : " + i.hw_addr)
-                            print("Hw_desc : " + i.name)
-
-                        # find max value of mac address from list mac address
-                        maxPort = "000000000000"
-                        maxIndex = 0
-                        
-                        for index , item in enumerate( listPort ):
-                            tempMac = item.hw_addr.replace(":","")
-                            if ( int( tempMac , 16 ) > int( maxPort , 16 ) ):
-                                maxPort = tempMac
-                                maxIndex = index
-
-                        
-                        # create OF_FEATURE_REPLY message
-                        packed_data = FeaRes()
-                        packed_data.header.xid = tranID
-
-                        # gen datapath_id from hw_addr of first port
-                        packed_data.datapath_id = listPort[maxIndex].hw_addr + ":ff:ff"
-                        #packed_data.datapath_id = '00:00:00:00:00:00:00:02'
-
-                        packed_data.n_buffers = 256
-                        packed_data.n_tables = 254
-                        packed_data.capabilities = 199
-                        packed_data.actions = 4095
-
-                        # create port
-                        #port1 = PPort(1, '00:00:00:00:00:02','eth1', 0, 0, 192 ,0,0,0)
-                        #packed_data.ports = [port1]
-                        packed_data.ports = listPort
-                        packed_data = packed_data.pack()
-
-                        # send OF_FEATURE_REPLY message
-                        self.s.send(packed_data)
-                        print("Send OF_FEATURE_REPLY message to controller")                        
-                            
-
-                        return
+               
+                
 
             except Exception as err : 
                 count += 1
                 print( " 322 Switch ip " + self.switchIp + " handling run-time error of socket : " + str(err) )
             
-        print( " Switch ip " + self.switchIp + " terminate" )
-        sys.exit()
+            print( " Switch ip " + self.switchIp + " terminate" )
+            sys.exit()
 
 
     def searchSnmpPosition(self, portNumber):
@@ -566,16 +514,12 @@ class Switch(threading.Thread):
 
 
     def openflowV1(self):
-
-        
         # OF_HELLO switch <-> controller
         self.sendAndReceiveOF_HELLO_OPENFLOWV1()
 
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
-        
-        
-        #self.initConnectionToController()
+
         
 
         #self.receiveRemoteSwitchDataFromSnmpVersion2C()
@@ -761,7 +705,6 @@ class Switch(threading.Thread):
         packed_decode = packer.unpack_from(data)
         print(packed_decode)
         """
-
 
 
 if __name__ == '__main__':

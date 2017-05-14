@@ -28,6 +28,7 @@ from pyof.v0x01.asynchronous.port_status import PortStatus as portStatus
 from pyof.v0x01.asynchronous.port_status import PortReason as portReason
 
 from pyof.v0x01.symmetric.echo_reply import EchoReply as echoReply
+from pyof.v0x01.symmetric.echo_request import EchoRequest as echoRequest
 
 from lldp import lldp
 
@@ -94,7 +95,7 @@ class Switch(threading.Thread):
         return packed_data
         """
 
-    def createOFFeatureReplyFromSnmpVersion2C(self, mininetOption):
+    def getActivePortFromSnmpVersion2C(self, mininetOption):
 
         # init value
         count = 0
@@ -142,6 +143,7 @@ class Switch(threading.Thread):
                         # check number of port should > 0
                         if( len(varBindTable) > 0 ):
 
+
                             for i in varBindTable :
                                 
                                 # mac address
@@ -152,8 +154,9 @@ class Switch(threading.Thread):
                                     print("Error invalid mac address from local port in snmp")
                                 else:
                                     
+                                    
                                     tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
-                                    tempPPort = PPort(index, tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
+                                    tempPPort = PPort(i[0][0][-1], tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
 
                                     self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
 
@@ -169,6 +172,7 @@ class Switch(threading.Thread):
                                     """
                                 listPort.append( tempPPort )
                                 index += 1
+                            
 
                             return listPort
 
@@ -362,7 +366,7 @@ class Switch(threading.Thread):
 
             
             #send OF_FEATURE_REPLY message
-            listPort = self.createOFFeatureReplyFromSnmpVersion2C( 1 )
+            listPort = self.getActivePortFromSnmpVersion2C( 0 )
 
 
             print("All active port of switch ip " + self.switchIp +  " : ")
@@ -436,7 +440,7 @@ class Switch(threading.Thread):
 
                         
                         #send OF_FEATURE_REPLY message
-                        listPort = self.createOFFeatureReplyFromSnmpVersion2C( 1 )
+                        listPort = self.createOFFeatureReplyFromSnmpVersion2C( 0 )
 
 
                         print("All active port of switch ip " + self.switchIp +  " : ")
@@ -488,6 +492,161 @@ class Switch(threading.Thread):
         print( " Switch ip " + self.switchIp + " terminate" )
         sys.exit()
 
+    def getListSnmpPositionFromSnmpVersion2C(self, mininetOption):
+
+        # init value
+        count  = 0
+        cmdGen = None
+
+        # list port
+        listSnmpPosition = []
+       
+        try : 
+            # create object for create snmp command
+            cmdGen = cmdgen.CommandGenerator()
+        except Exception as err :
+            print( " 94 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
+            sys.exit()
+
+        while count < self.numberOfRetransmission :
+            try :
+                # connect to snmp at switch
+                errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
+                    cmdgen.CommunityData('public'),
+                    cmdgen.UdpTransportTarget( ( self.switchIp , 161 ) ),
+                    '1.0.8802.1.1.2.1.3.7.1.3',
+                    '1.0.8802.1.1.2.1.3.7.1.4'
+                )
+
+                if errorIndication:
+                    print(errorIndication)
+                    count += 1
+                else:
+                    if errorStatus:
+                        print('%s at %s' % (
+                            errorStatus.prettyPrint(),
+                            errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
+                            )
+                        )
+                        count += 1
+                    else:
+                        # init value
+                        index = 10
+                        
+                        # number of port
+                        if mininetOption == 1 and len( varBindTable ) > 0 :
+                            del varBindTable[ len(varBindTable) - 1 ]
+
+                        # check number of port should > 0
+                        if( len(varBindTable) > 0 ):
+
+                            for i in varBindTable :
+                                
+                                # mac address
+                                tempHwAddr = i[0][1].prettyPrint()
+                                tempHwAddr = tempHwAddr[2:len(tempHwAddr)]
+
+                                if ( len(tempHwAddr) != 12 ) :
+                                    print("Error invalid mac address from local port in snmp")
+                                else:
+                                    
+                                    
+                                    tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
+                                    tempPPort = PPort(i[0][0][-1], tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
+                                    
+
+                                    listSnmpPosition.append( ( str(i[0][0][-1]), tempPPort ) )
+                                    
+                                    #self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
+
+                                    """
+                                    print("key : " + str(i[0][0][-1]) )
+                                    print("item  : " + tempPPort )
+                                    
+                                    """
+
+                                    """
+                                        key : poistion of active port in snmp (2)
+                                        item : PPort(object)
+                                    """
+                            return listSnmpPosition
+
+                        else:
+                            print( " 159 Switch ip " + self.switchIp + " terminate because : switch doesn't have active port please snmp")
+                            sys.exit()
+
+                
+            except Exception as err :
+                count += 1
+                print( " 165 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
+
+        
+        print( " Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
+        sys.exit()     
+
+    def checkStatusOfActivePort(self):
+
+        listSnmpPosition = self.getListSnmpPositionFromSnmpVersion2C( 0 )
+        #['2', '3', '5', '8', '9']
+        tempListActivePort = {}
+
+        # item = ( snmpPosition , PPort )
+        for item in listSnmpPosition:
+            print("item 1 : " + str(item[1].port_no))
+            if item[0] in self.listActivePort :
+                tempListActivePort[item[0]] = self.listActivePort[item[0]]
+                del self.listActivePort[item[0]]
+            else:
+                #send new port to controller
+                tempListActivePort[item[0]] = item[1]
+                packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=item[1] )
+                packed_data = packed_data.pack()
+                self.s.send( packed_data )   
+
+        """
+        num = input()
+        port = self.listActivePort["06:fd:e2:ae:ab:60"][2]
+        print( "delete port : " + str(port.port_no))
+        packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
+        packed_data = packed_data.pack()
+        self.s.send( packed_data )
+
+        num = input()
+        port.port_no = 10
+        print( "add port : " + str(port.port_no))
+        packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
+        packed_data = packed_data.pack()
+        self.s.send( packed_data )      
+        
+        return
+        """
+        
+        # send del port to controller
+        for snmpPosition , port in self.listActivePort.items():
+            packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
+            packed_data = packed_data.pack()
+            self.s.send( packed_data )
+            
+
+        
+        #self.listActivePort 
+        #print(listSnmpPosition)
+        #print(tempListActivePort)
+        
+        print("self.listActivePort")
+        for key,value in self.listActivePort.items():
+            print("key : " + str(key) + " port_no : " + str(value.port_no) )
+        
+        print("tempListActivePort")
+        for key,value in tempListActivePort.items():
+            print("key : " + str(key) + " port_no : " + str(value.port_no) )
+            
+        del self.listActivePort
+        self.listActivePort = tempListActivePort
+        """
+        for item in listSnmpPosition :
+            print("key : " + str(item[0]) + " port_no : " + str(item[1].port_no))
+        """
 
     def searchSnmpPosition(self, portNumber):
         for key , port in self.listActivePort.items() :
@@ -558,10 +717,12 @@ class Switch(threading.Thread):
 
             # OF_PACKET_IN -> controller
             self.s.send( packed_data )
+            
+            return True
 
         except Exception as err:
             print( " 514 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
-
+            return False
 
 
 
@@ -576,8 +737,6 @@ class Switch(threading.Thread):
         
         
         #self.initConnectionToController()
-        
-
         #self.receiveRemoteSwitchDataFromSnmpVersion2C()
 
         # init value
@@ -603,12 +762,15 @@ class Switch(threading.Thread):
             if data.header.message_type.name == "OFPT_PACKET_OUT":
                 
                 self.receiveRemoteSwitchDataFromSnmpVersion2C()
-
+                self.checkStatusOfActivePort()
                 # OF_PACKET_IN -> controller
                 check = self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( data )
-
-
-
+                
+                if not check :
+                    print("send OFPT_ECHO_REQUEST")
+                    packet = echoRequest().pack()
+                    self.s.send(packet)
+            
                 """
           
                 # ethernet header of lldp
@@ -647,12 +809,21 @@ class Switch(threading.Thread):
                 except Exception as err:
                     print( " 514 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
                 """
+            """
             if data.header.message_type.name == "OFPT_ECHO_REQUEST":
-                print("OFPT_ECHO_REQUEST")
+                print("Send OFPT_ECHO_REPLY")
                 packet = echoReply().pack()
                 self.s.send(packet)
+            """
 
-                
+
+            """
+            if data.header.message_type.name == "OFPT_ECHO_REPLY":
+                print("send OFPT_ECHO_REQUEST")
+                packet = echoRequest().pack()
+                self.s.send(packet)    
+            """
+              
         
     def startConnectToController(self):
 
