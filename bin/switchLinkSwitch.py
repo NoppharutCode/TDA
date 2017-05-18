@@ -9,6 +9,7 @@ import struct
 import binascii
 import sys
 import threading
+from rwlock import RWLock
 
 from pyof.v0x01.controller2switch.features_request import FeaturesRequest as FeaReq
 from pyof.v0x01.controller2switch.features_reply import FeaturesReply as FeaRes
@@ -37,7 +38,7 @@ from pysnmp.entity.rfc3413.oneliner import cmdgen
 
 class Switch(threading.Thread):
     
-    def __init__( self , controllerIp , controllerPort , buffer_size , switchIp , communityString="public"):
+    def __init__( self , controllerIp , controllerPort , buffer_size , switchIp , dictAllActivePortInTDA , lock ,communityString="public"):
 
 
 
@@ -49,6 +50,10 @@ class Switch(threading.Thread):
         self.switchIp = switchIp
         self.dictActivePort = {}
         self.dictRemoteSwitchDataFromPort = {}
+        self.dictAllActivePortInTDA = dictAllActivePortInTDA
+        self.datapathId = None
+
+        self.lock = lock
 
         self.numberOfRetransmission = 3
 
@@ -367,7 +372,6 @@ class Switch(threading.Thread):
                     maxPort = tempMac
                     maxIndex = index
 
-            
             # create OF_FEATURE_REPLY message
             packed_data = FeaRes()
             packed_data.header.xid = tranID
@@ -391,14 +395,35 @@ class Switch(threading.Thread):
             self.s.send(packed_data)
             print("Send OF_FEATURE_REPLY message to controller")
 
+            #record datapath id 
+            self.datapathId = listPort[maxIndex].hw_addr + ":ff:ff"
+            self.datapathId = "dpid:"+ self.datapathId.replace(":","")
+
+            """
+            tempPortID = i[1][1].prettyPrint()[2:] # 00000001
+            # change 00000001 to \x00\x00\x00\x01
+            packer = struct.Struct('bbbb')
+            secondData = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+            """
+
+            self.lock.acquire_write()
+            # add port to dict all active port in tda
+            for snmpPosition, port in self.dictActivePort.items():
+                tempPortID = str(port.port_no)
+                tempPortID = ("0" * ( 8 - len(tempPortID)) ) + tempPortID
+                packer = struct.Struct('bbbb')
+                tempPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                self.dictAllActivePortInTDA[ ( port.hw_addr, port.name ) ] = [self.datapathId , tempPortID]
+            self.lock.release()
+            print(self.dictAllActivePortInTDA)
+
         except Exception as err :
+            try :
+                self.lock.release()
+            except Exception as err :
+                pass
             print( " 387 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
             sys.exit()
-
-
-
-
-    
 
     def checkStatusOfActivePort(self):
 
@@ -415,6 +440,7 @@ class Switch(threading.Thread):
                 listDictPortPresent[snmpPosition] = dictPort[snmpPosition]
          
         for snmpPosition , port in listDictPortPresent.items():
+            #print("55555555 : " + port.hw_addr)
             if snmpPosition in self.dictActivePort:
                 tempDictActivePort[snmpPosition] = port
                 del self.dictActivePort[snmpPosition]
@@ -423,18 +449,36 @@ class Switch(threading.Thread):
                 tempDictActivePort[snmpPosition] = port
                 packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
                 packed_data = packed_data.pack()
-                self.s.send( packed_data )              
+                self.s.send( packed_data )
+                self.lock.acquire_write()
+                # add port to dict all active port in tda
+                self.dictAllActivePortInTDA[ ( port.hw_addr , port.name ) ] = [ self.datapathId , port.port_no ]
+                self.lock.release()
+                print("release at add port")
+                           
         
         print("list dict active port")
+        print(self.dictActivePort)
         for snmpPosition , port in self.dictActivePort.items():
             print(port)
         #send del port to controller
         for snmpPosition , port in self.dictActivePort.items():
-            print("555555555555555")
             packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
             packed_data = packed_data.pack()
             self.s.send( packed_data )
-            print("555555555555555")
+        
+        # del port from dict all active port in TDA
+        if len(self.dictActivePort.items()) > 0 :
+            self.lock.acquire_write()
+            for snmpPosition , port in self.dictActivePort.items():
+                print("--------------delete-------------")
+                print("hw_addr : " + port.hw_addr)
+                print("hw_desc : " + port.name)
+                print(self.dictAllActivePortInTDA)
+                del self.dictAllActivePortInTDA[ ( port.hw_addr , port.name ) ]
+                print(self.dictAllActivePortInTDA)
+                print("--------------delete-------------")
+            self.lock.release()
 
         del self.dictActivePort
         self.dictActivePort = tempDictActivePort    
@@ -546,11 +590,31 @@ class Switch(threading.Thread):
                 print("snmpposition : " + snmpPosition + " port : " + str(tempPort.hw_addr))
             """
 
-            # send Packet_IN contain lldp frame
-            chassis_id = self.dictRemoteSwitchDataFromPort[snmpPosition][0]
-            port_id = self.dictRemoteSwitchDataFromPort[snmpPosition][1]
-            in_port = tempPort.port_no
+            # init value
+            chassis_id = None
+            port_id = None
 
+            if self.dictRemoteSwitchDataFromPort[snmpPosition][2] :
+                # send Packet_IN contain lldp frame
+                chassis_id = self.dictRemoteSwitchDataFromPort[snmpPosition][0]
+                port_id = self.dictRemoteSwitchDataFromPort[snmpPosition][1]
+                in_port = tempPort.port_no
+                print("port : " + str(port_id))
+            else :
+
+                tempHwAddr = self.dictRemoteSwitchDataFromPort[snmpPosition][0][2:]
+                tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
+                try:
+                    self.lock.acquire_read()
+                    chassis_id = self.dictAllActivePortInTDA[(tempHwAddr, self.dictRemoteSwitchDataFromPort[snmpPosition][1])][0] 
+                    port_id = self.dictAllActivePortInTDA[(tempHwAddr, self.dictRemoteSwitchDataFromPort[snmpPosition][1])][1] 
+                    self.lock.release()
+                except Exception as err : 
+                    self.lock.release()
+                in_port = tempPort.port_no
+                print("5555555555555555555")
+                print("chassis_id :  " + chassis_id)
+                print("port_id : " + str(port_id))
             ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
 
             # create OF_PACKET_IN message
@@ -569,6 +633,7 @@ class Switch(threading.Thread):
             return True
 
         except Exception as err:
+
             print( " 514 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
             return False
 
@@ -581,7 +646,7 @@ class Switch(threading.Thread):
 
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
-        return
+        
         """
         port = PPort(100, "ff:ff:ff:ff:ff:00" , "test", 0, 0, 192 ,0,0,0)
         port.port_no = 200
@@ -661,7 +726,8 @@ class Switch(threading.Thread):
             self.stopConnectToController()
 
 if __name__ == '__main__':
-    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104')
+    dictAllActivePortInTDA = {}
+    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104', dictAllActivePortInTDA , RWLock())
     #tda.createOFFeatureReplyFromSnmp(111,1)
     tda.startConnectToController()
     num = input()   

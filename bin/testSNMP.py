@@ -237,6 +237,7 @@ else:
                 print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))
 """
 
+"""
 from reader import reader
 from writer import writer
 from rwlock import RWLock
@@ -266,4 +267,8 @@ for t in threads:
 print("result" + str(dictNumber["number"]) )
 
 
- 
+ """
+
+dictTest = { ("1" , "2") : 10 , ("2" ,"3") : 20 }
+del dictTest[("1","2")]
+print(dictTest)
