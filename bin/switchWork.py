@@ -208,7 +208,10 @@ class Switch(threading.Thread):
                 cmdgen.CommunityData('public'),
                 cmdgen.UdpTransportTarget((self.switchIp, 161)),
                 '1.0.8802.1.1.2.1.4.1.1.5',
-                '1.0.8802.1.1.2.1.4.1.1.7'
+                '1.0.8802.1.1.2.1.4.1.1.7',
+                '1.0.8802.1.1.2.1.4.1.1.8',
+                '1.0.8802.1.1.2.1.4.1.1.4',
+                '1.0.8802.1.1.2.1.4.1.1.6'
             )
 
             if errorIndication:
@@ -224,28 +227,49 @@ class Switch(threading.Thread):
                     count += 1
                 else:
 
+                    #init value
                     tempPortID = ""
+                    chassisIdSubType = ""
+                    portIdSubType = ""
+                    firstData = None
+                    secondData = None
+                    status = None
+
 
                     for i in varBindTable:
 
-                        tempPortID = i[1][1].prettyPrint()[2:] # 00000001
+                        chassisIdSubType = i[3][1].prettyPrint()
+                        portIdSubType = i[4][1].prettyPrint()
 
-                        # change 00000001 to \x00\x00\x00\x01
-                        packer = struct.Struct('bbbb')
-                        binaryPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
-                            
+
+                        if chassisIdSubType == "7" and portIdSubType == "2":
+                            firstData = i[0][1].prettyPrint()
+                            tempPortID = i[1][1].prettyPrint()[2:] # 00000001
+                            # change 00000001 to \x00\x00\x00\x01
+                            packer = struct.Struct('bbbb')
+                            secondData = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                            status = True                            
+                        elif chassisIdSubType == "4" and portIdSubType == "3" :
+                           firstData = i[0][1].prettyPrint()
+                           secondData = i[2][1].prettyPrint()
+                           status = False
                         """ 
                             key = poistion of active port at recvice remote data in snmp (int : 2)
                             index 0 = datapath id (str : dpid:0000000000000001)
-                            index 1 = port id (binary : b'\x00\x00\x00\x01')
+                            index 1 = port no (binary : b'\x00\x00\x00\x01')
+                            index 2 = check status (datapath_id, port_no) or (hw_addr, hw_desc)
                         """
-                        dictRemoteSwitchDataFromPort[str(i[0][0][-2])] = [ i[0][1].prettyPrint() , binaryPortID ]
+                        dictRemoteSwitchDataFromPort[str(i[0][0][-2])] = [ firstData , secondData , status ]
 
-                        """
+                        
+                        print("dictRemoteSwitchDataFromPort : ")
                         print( "key : " + str(i[0][0][-2]) )
-                        print( "index 0 : " + i[0][1].prettyPrint() )
-                        print( "index 1 : " + str(packed_encode) )
-                        """
+                        print( "index 0 : " + dictRemoteSwitchDataFromPort[str(i[0][0][-2])][0] )
+                        print( "index 1 : " + str(dictRemoteSwitchDataFromPort[str(i[0][0][-2])][1]) )
+                        print( "index 2 : " + str(dictRemoteSwitchDataFromPort[str(i[0][0][-2])][2]) )
+
+
+                        
                     #print("remote port list : ")
                     #print(dictRemoteSwitchDataFromPort)
                     return dictRemoteSwitchDataFromPort
@@ -329,15 +353,10 @@ class Switch(threading.Thread):
                     listPort.append(dictPort[snmpPosition])
             
             
-            print("list active port : ")
+            print("list active port " + self.switchIp +  " : ")
             for key, port in self.dictActivePort.items() :
                 print("snmp position : " + key + " | hw_addr : " + str(port.hw_addr) + " | port_no : " + str(port.port_no) )
                       
-            print("All active port of switch ip " + self.switchIp +  " : ")
-            for i in listPort:
-                print("Hw_addr : " + i.hw_addr)
-                print("Hw_desc : " + i.name)
-
             # find max value of mac address from list mac address
             maxPort = "000000000000"
             maxIndex = 0
@@ -562,7 +581,7 @@ class Switch(threading.Thread):
 
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
-
+        return
         """
         port = PPort(100, "ff:ff:ff:ff:ff:00" , "test", 0, 0, 192 ,0,0,0)
         port.port_no = 200
