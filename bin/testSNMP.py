@@ -195,14 +195,40 @@ print( type(data) )
 
 """
 
+"""
 dic = { "1" : "one" , "2" : "two" }
 
-tempDic = {}
-
-
 print(dic)
+"""
 
 """
 for key, value in dic.items():
     print("key : " + key + " value : " + value)
 """
+
+
+
+from pysnmp.entity.rfc3413.oneliner import cmdgen
+
+cmdGen = cmdgen.CommandGenerator()
+
+errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
+    cmdgen.CommunityData('public'),
+    cmdgen.UdpTransportTarget(('192.168.90.104', 161)),
+    '1.0.8802.1.1.2.1.4.1.1.5',
+    '1.0.8802.1.1.2.1.4.1.1.7'
+)
+
+if errorIndication:
+    print(errorIndication)
+else:
+    if errorStatus:
+        print('%s at %s' % (
+            errorStatus.prettyPrint(),
+            errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
+            )
+        )
+    else:
+        for varBindTableRow in varBindTable:
+            for name, val in varBindTableRow:
+                print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))

@@ -47,9 +47,8 @@ class Switch(threading.Thread):
         self.controllerPort = int(controllerPort)
         self.buffer_size = int(buffer_size)
         self.switchIp = switchIp
-        self.listActivePort = {}
-        self.listRemoteDataFromPort = {}
-
+        self.dictActivePort = {}
+        self.dictRemoteSwitchDataFromPort = {}
 
         self.numberOfRetransmission = 3
 
@@ -95,14 +94,14 @@ class Switch(threading.Thread):
         return packed_data
         """
 
-    def getActivePortFromSnmpVersion2C(self, mininetOption):
+    def getPortFromSnmpVersion2C(self, mininetOption):
 
         # init value
         count = 0
         cmdGen = None
 
         # list port
-        listPort = []
+        dictPort = {}
        
         try : 
             # create object for create snmp command
@@ -134,7 +133,7 @@ class Switch(threading.Thread):
                         count += 1
                     else:
                         # init value
-                        index = 1
+                        #index = 1
                         
                         # number of port
                         if mininetOption == 1 and len( varBindTable ) > 0 :
@@ -158,7 +157,7 @@ class Switch(threading.Thread):
                                     tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
                                     tempPPort = PPort(i[0][0][-1], tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
 
-                                    self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
+                                    dictPort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
 
                                     """
                                     print("key : " + str(i[0][0][-1]) )
@@ -170,10 +169,10 @@ class Switch(threading.Thread):
                                         key : poistion of active port in snmp (2)
                                         item : PPort(object)
                                     """
-                                listPort.append( tempPPort )
-                                index += 1
+                                
+                                #index += 1
                             
-                            return listPort
+                            return dictPort
 
                         else:
                             print( " 159 Switch ip " + self.switchIp + " terminate because : switch doesn't have active port please snmp")
@@ -188,12 +187,12 @@ class Switch(threading.Thread):
         print( " Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
         sys.exit()
     
-    def receiveRemoteSwitchDataFromSnmpVersion2C(self):
+    def getRemoteSwitchDataFromSnmpVersion2C(self):
 
         # init value
         count = 0
         cmdGen = None
-        self.listRemoteDataFromPort = {}
+        dictRemoteSwitchDataFromPort = {}
 
         try : 
             # create object for create snmp command
@@ -240,16 +239,16 @@ class Switch(threading.Thread):
                             index 0 = datapath id (str : dpid:0000000000000001)
                             index 1 = port id (binary : b'\x00\x00\x00\x01')
                         """
-                        self.listRemoteDataFromPort[str(i[0][0][-2])] = [ i[0][1].prettyPrint() , binaryPortID ]
+                        dictRemoteSwitchDataFromPort[str(i[0][0][-2])] = [ i[0][1].prettyPrint() , binaryPortID ]
 
                         """
                         print( "key : " + str(i[0][0][-2]) )
                         print( "index 0 : " + i[0][1].prettyPrint() )
                         print( "index 1 : " + str(packed_encode) )
                         """
-                    print("remote port list : ")
-                    print(self.listRemoteDataFromPort)
-                    return
+                    #print("remote port list : ")
+                    #print(dictRemoteSwitchDataFromPort)
+                    return dictRemoteSwitchDataFromPort
             # </snmpv2c>
         except Exception as err :
             print( " 277 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
@@ -307,7 +306,7 @@ class Switch(threading.Thread):
         try : 
             # receive OF_FEATURE_REQUEST message
             data = self.receiveDataFromSocket()
-            print( " 332 Switch ip " + self.switchIp + " Receive OF_FEATURE_REQUEST message from controller")
+            print( "Switch ip " + self.switchIp + " Receive OF_FEATURE_REQUEST message from controller")
             data = unpack_message(data)
 
             if  data.header.message_type.name != "OFPT_FEATURES_REQUEST" :
@@ -318,8 +317,22 @@ class Switch(threading.Thread):
             tranID = data.header.xid
 
             #send OF_FEATURE_REPLY message
-            listPort = self.getActivePortFromSnmpVersion2C( 0 )
 
+            listPort = []
+            dictRemoteSwitchData = self.getRemoteSwitchDataFromSnmpVersion2C() 
+            dictPort = self.getPortFromSnmpVersion2C( 0 )
+                       
+        
+            for snmpPosition in dictPort :
+                if snmpPosition in dictRemoteSwitchData :
+                    self.dictActivePort[snmpPosition] = dictPort[snmpPosition]
+                    listPort.append(dictPort[snmpPosition])
+            
+            
+            print("list active port : ")
+            for key, port in self.dictActivePort.items() :
+                print("snmp position : " + key + " | hw_addr : " + str(port.hw_addr) + " | port_no : " + str(port.port_no) )
+                      
             print("All active port of switch ip " + self.switchIp +  " : ")
             for i in listPort:
                 print("Hw_addr : " + i.hw_addr)
@@ -365,117 +378,65 @@ class Switch(threading.Thread):
 
 
 
-    def getActivePortForCheckStatusFromSnmpVersion2C(self, mininetOption):
 
-        # init value
-        count  = 0
-        cmdGen = None
-
-        # list port
-        listSnmpPosition = []
-       
-        try : 
-            # create object for create snmp command
-            cmdGen = cmdgen.CommandGenerator()
-        except Exception as err :
-            print( " 94 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
-            sys.exit()
-
-        while count < self.numberOfRetransmission :
-            try :
-                # connect to snmp at switch
-                errorIndication, errorStatus, errorIndex, varBindTable = cmdGen.nextCmd(
-                    cmdgen.CommunityData('public'),
-                    cmdgen.UdpTransportTarget( ( self.switchIp , 161 ) ),
-                    '1.0.8802.1.1.2.1.3.7.1.3',
-                    '1.0.8802.1.1.2.1.3.7.1.4'
-                )
-
-                if errorIndication:
-                    print(errorIndication)
-                    count += 1
-                else:
-                    if errorStatus:
-                        print('%s at %s' % (
-                            errorStatus.prettyPrint(),
-                            errorIndex and varBindTable[-1][int(errorIndex)-1] or '?'
-                            )
-                        )
-                        count += 1
-                    else:
-                        # init value
-                        index = 10
-                        
-                        # number of port
-                        if mininetOption == 1 and len( varBindTable ) > 0 :
-                            del varBindTable[ len(varBindTable) - 1 ]
-
-                        # check number of port should > 0
-                        if( len(varBindTable) > 0 ):
-
-                            for i in varBindTable :
-                                
-                                # mac address
-                                tempHwAddr = i[0][1].prettyPrint()
-                                tempHwAddr = tempHwAddr[2:len(tempHwAddr)]
-
-                                if ( len(tempHwAddr) != 12 ) :
-                                    print("Error invalid mac address from local port in snmp")
-                                else:
-                                    
-                                    
-                                    tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
-                                    tempPPort = PPort(i[0][0][-1], tempHwAddr , i[1][1].prettyPrint(), 0, 0, 192 ,0,0,0)
-                                    
-
-                                    listSnmpPosition.append( ( str(i[0][0][-1]), tempPPort ) )
-                                    
-                                    #self.listActivePort[ str(i[0][0][-1]) ] = tempPPort  # type interger chage to str
-
-                                    """
-                                    print("key : " + str(i[0][0][-1]) )
-                                    print("item  : " + tempPPort )
-                                    
-                                    """
-
-                                    """
-                                        key : poistion of active port in snmp (2)
-                                        item : PPort(object)
-                                    """
-                            return listSnmpPosition
-
-                        else:
-                            print( " 159 Switch ip " + self.switchIp + " terminate because : switch doesn't have active port please snmp")
-                            sys.exit()
-
-                
-            except Exception as err :
-                count += 1
-                print( " 165 Switch ip " + self.switchIp + " handling run-time error : " + str( err ) )
-
-        
-        print( " Switch ip " + self.switchIp + " terminate because : it has problem about snmp ")
-        sys.exit()     
+    
 
     def checkStatusOfActivePort(self):
 
-        listSnmpPosition = self.getActivePortForCheckStatusFromSnmpVersion2C( 0 )
-        #['2', '3', '5', '8', '9']
-        tempListActivePort = {}
+       
+        tempDictActivePort = {}
+        # dict for activeport at cal ma
+        listDictPortPresent = {}
 
-        # item = ( snmpPosition , PPort )
-        for item in listSnmpPosition:
+        dictRemoteSwitchData = self.getRemoteSwitchDataFromSnmpVersion2C()
+        dictPort = self.getPortFromSnmpVersion2C( 0 )
+           
+        for snmpPosition in dictPort :
+            if snmpPosition in dictRemoteSwitchData :
+                listDictPortPresent[snmpPosition] = dictPort[snmpPosition]
+         
+        for snmpPosition , port in listDictPortPresent.items():
+            if snmpPosition in self.dictActivePort:
+                tempDictActivePort[snmpPosition] = port
+                del self.dictActivePort[snmpPosition]
+            else:
+                #send new port to controller
+                tempDictActivePort[snmpPosition] = port
+                packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
+                packed_data = packed_data.pack()
+                self.s.send( packed_data )              
+        
+        print("list dict active port")
+        for snmpPosition , port in self.dictActivePort.items():
+            print(port)
+        #send del port to controller
+        for snmpPosition , port in self.dictActivePort.items():
+            print("555555555555555")
+            packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
+            packed_data = packed_data.pack()
+            self.s.send( packed_data )
+            print("555555555555555")
+
+        del self.dictActivePort
+        self.dictActivePort = tempDictActivePort    
+        del self.dictRemoteSwitchDataFromPort
+        self.dictRemoteSwitchDataFromPort = dictRemoteSwitchData
+            
+
+        """
+        for item in listDictPortPresent:
             #print("item 1 : " + str(item[1].port_no))
-            if item[0] in self.listActivePort :
-                tempListActivePort[item[0]] = self.listActivePort[item[0]]
+            if item in self.dictActivePort :
+                tempDictActivePort[item] = self.dictActivePort[item]
                 del self.listActivePort[item[0]]
             else:
                 #send new port to controller
-                tempListActivePort[item[0]] = item[1]
+                tempDictActivePort[item[] = item[1]
                 packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=item[1] )
                 packed_data = packed_data.pack()
                 self.s.send( packed_data )   
 
+        """
         """
         num = input()
         port = self.listActivePort["06:fd:e2:ae:ab:60"][2]
@@ -494,11 +455,7 @@ class Switch(threading.Thread):
         return
         """
         
-        # send del port to controller
-        for snmpPosition , port in self.listActivePort.items():
-            packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
-            packed_data = packed_data.pack()
-            self.s.send( packed_data )
+
             
 
         
@@ -507,24 +464,23 @@ class Switch(threading.Thread):
         #print(tempListActivePort)
         
         """
-        print("self.listActivePort")
-        for key,value in self.listActivePort.items():
+        print("self.dictActivePort")
+        for key,value in self.dictActivePort.items():
             print("key : " + str(key) + " port_no : " + str(value.port_no) )
         
-        print("tempListActivePort")
-        for key,value in tempListActivePort.items():
+        print("tempDictActivePort")
+        for key,value in tempDictActivePort.items():
             print("key : " + str(key) + " port_no : " + str(value.port_no) )
         """
         
-        del self.listActivePort
-        self.listActivePort = tempListActivePort
+
         """
         for item in listSnmpPosition :
             print("key : " + str(item[0]) + " port_no : " + str(item[1].port_no))
         """
 
     def searchSnmpPosition(self, portNumber):
-        for key , port in self.listActivePort.items() :
+        for key , port in self.dictActivePort.items() :
             if port.port_no == portNumber :
                 return key , port
                 #print("key : " + key + " port : " + str(port) + " hw_addr : " + str(port.hw_addr) +" port_no : " + str(port.port_no))
@@ -572,8 +528,8 @@ class Switch(threading.Thread):
             """
 
             # send Packet_IN contain lldp frame
-            chassis_id = self.listRemoteDataFromPort[snmpPosition][0]
-            port_id = self.listRemoteDataFromPort[snmpPosition][1]
+            chassis_id = self.dictRemoteSwitchDataFromPort[snmpPosition][0]
+            port_id = self.dictRemoteSwitchDataFromPort[snmpPosition][1]
             in_port = tempPort.port_no
 
             ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
@@ -601,12 +557,20 @@ class Switch(threading.Thread):
 
     def openflowV1(self):
 
-        
         # OF_HELLO switch <-> controller
         self.sendAndReceiveOF_HELLO_OPENFLOWV1()
 
         # OF_FEATURE switch <-> controller
         self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
+
+        """
+        port = PPort(100, "ff:ff:ff:ff:ff:00" , "test", 0, 0, 192 ,0,0,0)
+        port.port_no = 200
+        print( "add port : " + str(port.port_no))
+        packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
+        packed_data = packed_data.pack()
+        self.s.send( packed_data )  
+        """
 
         # init value
         data = None
@@ -630,7 +594,7 @@ class Switch(threading.Thread):
         
             if data.header.message_type.name == "OFPT_PACKET_OUT":
                 
-                self.receiveRemoteSwitchDataFromSnmpVersion2C()
+                
                 self.checkStatusOfActivePort()
                 # OF_PACKET_IN -> controller
                 check = self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( data )
