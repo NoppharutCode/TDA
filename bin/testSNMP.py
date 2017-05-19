@@ -267,8 +267,11 @@ for t in threads:
 print("result" + str(dictNumber["number"]) )
 
 
- """
+"""
 
-dictTest = { ("1" , "2") : 10 , ("2" ,"3") : 20 }
-del dictTest[("1","2")]
-print(dictTest)
+
+
+dictt = None
+
+if dictt == None:
+    print("55555")

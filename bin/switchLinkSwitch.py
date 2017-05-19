@@ -406,23 +406,24 @@ class Switch(threading.Thread):
             secondData = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
             """
 
-            self.lock.acquire_write()
-            # add port to dict all active port in tda
-            for snmpPosition, port in self.dictActivePort.items():
-                tempPortID = str(port.port_no)
-                tempPortID = ("0" * ( 8 - len(tempPortID)) ) + tempPortID
-                packer = struct.Struct('bbbb')
-                tempPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
-                self.dictAllActivePortInTDA[ ( port.hw_addr, port.name ) ] = [self.datapathId , tempPortID]
-            self.lock.release()
-            print(self.dictAllActivePortInTDA)
+            try :
+                self.lock.acquire_write()
+                # add port to dict all active port in tda
+                for snmpPosition, port in self.dictActivePort.items():
+                    tempPortID = str(port.port_no)
+                    tempPortID = ("0" * ( 8 - len(tempPortID)) ) + tempPortID
+                    packer = struct.Struct('bbbb')
+                    tempPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                    self.dictAllActivePortInTDA[ ( port.hw_addr, port.name ) ] = [self.datapathId , tempPortID]
+                self.lock.release()
+                print(self.dictAllActivePortInTDA)
+            except Exception as err :
+                self.lock.release()
+                print( " 422 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
+                sys.exit()
 
         except Exception as err :
-            try :
-                self.lock.release()
-            except Exception as err :
-                pass
-            print( " 387 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
+            print( " 426 Switch ip " + self.switchIp + " terminate because handling run-time error : " + str( err ) )
             sys.exit()
 
     def checkStatusOfActivePort(self):
@@ -450,6 +451,7 @@ class Switch(threading.Thread):
                 packed_data = portStatus( reason=portReason.OFPPR_ADD , desc=port )
                 packed_data = packed_data.pack()
                 self.s.send( packed_data )
+                
                 self.lock.acquire_write()
                 # add port to dict all active port in tda
                 self.dictAllActivePortInTDA[ ( port.hw_addr , port.name ) ] = [ self.datapathId , port.port_no ]
@@ -518,30 +520,6 @@ class Switch(threading.Thread):
         return
         """
         
-
-            
-
-        
-        #self.listActivePort 
-        #print(listSnmpPosition)
-        #print(tempListActivePort)
-        
-        """
-        print("self.dictActivePort")
-        for key,value in self.dictActivePort.items():
-            print("key : " + str(key) + " port_no : " + str(value.port_no) )
-        
-        print("tempDictActivePort")
-        for key,value in tempDictActivePort.items():
-            print("key : " + str(key) + " port_no : " + str(value.port_no) )
-        """
-        
-
-        """
-        for item in listSnmpPosition :
-            print("key : " + str(item[0]) + " port_no : " + str(item[1].port_no))
-        """
-
     def searchSnmpPosition(self, portNumber):
         for key , port in self.dictActivePort.items() :
             if port.port_no == portNumber :
@@ -594,6 +572,7 @@ class Switch(threading.Thread):
             chassis_id = None
             port_id = None
 
+
             if self.dictRemoteSwitchDataFromPort[snmpPosition][2] :
                 # send Packet_IN contain lldp frame
                 chassis_id = self.dictRemoteSwitchDataFromPort[snmpPosition][0]
@@ -604,17 +583,18 @@ class Switch(threading.Thread):
 
                 tempHwAddr = self.dictRemoteSwitchDataFromPort[snmpPosition][0][2:]
                 tempHwAddr = tempHwAddr[0:2] + ":" + tempHwAddr[2:4] + ":" + tempHwAddr[4:6] + ":" + tempHwAddr[6:8] + ":" + tempHwAddr[8:10] + ":" + tempHwAddr[10:12]
+                
                 try:
                     self.lock.acquire_read()
                     chassis_id = self.dictAllActivePortInTDA[(tempHwAddr, self.dictRemoteSwitchDataFromPort[snmpPosition][1])][0] 
                     port_id = self.dictAllActivePortInTDA[(tempHwAddr, self.dictRemoteSwitchDataFromPort[snmpPosition][1])][1] 
                     self.lock.release()
+                    if chassis_id == None:
+                        return False
                 except Exception as err : 
                     self.lock.release()
                 in_port = tempPort.port_no
-                print("5555555555555555555")
-                print("chassis_id :  " + chassis_id)
-                print("port_id : " + str(port_id))
+            print(chassis_id )
             ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
 
             # create OF_PACKET_IN message
