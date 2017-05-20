@@ -303,7 +303,9 @@ class Switch(threading.Thread):
 
     def sendAndReceiveOF_HELLO_OPENFLOWV1(self):
 
+        #init value
         count = 0
+        tempBytes = None
 
         # create OF_HEllO message
         packed_data = Hello().pack()
@@ -317,11 +319,20 @@ class Switch(threading.Thread):
 
                 # receive OF_HELLO message from controller
                 data = self.s.recv(self.buffer_size)
+                print("hello message len : " + str(len(data)) )
+
+                # temp for byte data
+                tempBytes = data
+
                 data = unpack_message(data)
 
                 if data.header.message_type.name == "OFPT_HELLO" :
-                    print( "Switch ip " + self.switchIp + " Receive OF_HELLO message from controller")    
-                    return
+                    print( "Switch ip " + self.switchIp + " Receive OF_HELLO message from controller") 
+                    if len(tempBytes) == 8:
+                        return False , None
+                    else:
+                        print(tempBytes[8:16])
+                        return True , tempBytes[8:16]
 
             except Exception as err : 
                 count += 1
@@ -330,11 +341,15 @@ class Switch(threading.Thread):
             print( " Switch ip " + self.switchIp + " terminate" )
             sys.exit()
 
-    def sendAndReceiveOF_FEATURE_OPENFLOWV1(self):
+    def sendAndReceiveOF_FEATURE_OPENFLOWV1(self, checkData, tempBytes ):
 
         try : 
             # receive OF_FEATURE_REQUEST message
-            data = self.receiveDataFromSocket()
+            if checkData:
+                data = tempBytes
+            else:
+                data = self.receiveDataFromSocket()
+            
             print( "Switch ip " + self.switchIp + " Receive OF_FEATURE_REQUEST message from controller")
             data = unpack_message(data)
 
@@ -594,7 +609,7 @@ class Switch(threading.Thread):
                 except Exception as err : 
                     self.lock.release()
                 in_port = tempPort.port_no
-            print(chassis_id )
+            print("612 error : " + chassis_id)
             ethernet_data = self.createLLDPPacket( srcEthernet  , bytes(chassis_id, encoding='utf-8') , port_id )
 
             # create OF_PACKET_IN message
@@ -621,11 +636,16 @@ class Switch(threading.Thread):
 
     def openflowV1(self):
 
-        # OF_HELLO switch <-> controller
-        self.sendAndReceiveOF_HELLO_OPENFLOWV1()
+        # init value
+        data = None
+        checkData = None
+        tempBytes = None
 
+        # OF_HELLO switch <-> controller
+        checkData , tempBytes = self.sendAndReceiveOF_HELLO_OPENFLOWV1()
+    
         # OF_FEATURE switch <-> controller
-        self.sendAndReceiveOF_FEATURE_OPENFLOWV1()
+        self.sendAndReceiveOF_FEATURE_OPENFLOWV1(checkData, tempBytes)
         
         """
         port = PPort(100, "ff:ff:ff:ff:ff:00" , "test", 0, 0, 192 ,0,0,0)
@@ -635,9 +655,6 @@ class Switch(threading.Thread):
         packed_data = packed_data.pack()
         self.s.send( packed_data )  
         """
-
-        # init value
-        data = None
 
         while(1):
 
