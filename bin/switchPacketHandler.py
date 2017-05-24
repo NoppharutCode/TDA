@@ -587,7 +587,7 @@ class Switch(threading.Thread):
                 print("snmp poisition : " + key + " port : " + port.hw_addr)
             """
             """
-            if snmpPosition == "5" :
+            if snmpPosition == "c5" :
                 print("snmpposition : " + snmpPosition + " port : " + str(tempPort.hw_addr))
             """
 

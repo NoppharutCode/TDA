@@ -3,7 +3,7 @@ Created on Mon Jan 02 20:18:09 2017
 
 @author: Noppharut
 """
-import switchPacketHandler
+import switchComplete
 from rwlock import RWLock
 
 
@@ -27,7 +27,7 @@ if __name__ == '__main__':
         
         for switchIP in f:
             print(switchIP)
-            thread = switchPacketHandler.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA ,lock )
+            thread = switchComplete.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA ,lock )
             thread.start()
             threads.append(thread)
         
