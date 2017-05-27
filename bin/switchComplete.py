@@ -409,6 +409,8 @@ class Switch(threading.Thread):
             # create port
             #port1 = PPort(1, '00:00:00:00:00:02','eth1', 0, 0, 192 ,0,0,0)
             #packed_data.ports = [port1]
+            #create controller port
+            listPort.append(PPort(65534, '00:00:00:00:00:00','tdaPortNull', 0, 0, 192 ,0,0,0))
             packed_data.ports = listPort
             packed_data = packed_data.pack()
 
@@ -463,7 +465,7 @@ class Switch(threading.Thread):
         else:
             dictRemoteSwitchData = {}
         
-        
+        """
         if self.switchIp == "192.168.0.104":
             print("--------------192.168.0.104-----------------")
             print("active port before check :  self.dictActivePort")
@@ -471,7 +473,7 @@ class Switch(threading.Thread):
             print("active port before check :  self.dictAllActivePortInTDA")
             print(self.dictAllActivePortInTDA)
             print("--------------192.168.0.104-----------------")
-        
+        """
 
         for snmpPosition in dictPort :
             if snmpPosition in dictRemoteSwitchData :
@@ -526,7 +528,7 @@ class Switch(threading.Thread):
                 """
             self.lock.release()
 
-        
+        """
         if self.switchIp == "192.168.0.104":
             print("--------------192.168.0.104-----------------")
             print("active port after check :  tempDictActivePort")
@@ -534,7 +536,7 @@ class Switch(threading.Thread):
             print("active port after check :  self.dictAllActivePortInTDA")
             print(self.dictAllActivePortInTDA)
             print("--------------192.168.0.104-----------------")
-        
+        """
         del self.dictActivePort
         self.dictActivePort = tempDictActivePort   
         #print("Active Port : " + self.switchIp) 
@@ -543,12 +545,7 @@ class Switch(threading.Thread):
         self.dictRemoteSwitchDataFromPort = dictRemoteSwitchData
         
         
-    def searchSnmpPosition(self, portNumber):
-        for key , port in self.dictActivePort.items() :
-            if port.port_no == portNumber :
-                return key , port
-                #print("key : " + key + " port : " + str(port) + " hw_addr : " + str(port.hw_addr) +" port_no : " + str(port.port_no))
-        return None, None
+
 
     def sendLLDPInOF_PACKET_IN_OPENFLOWV1( self, data ):
 
@@ -580,7 +577,10 @@ class Switch(threading.Thread):
             
             #data.actions[0].port is output_field
             #print("output port : " + str(data.actions[0].port))
-            snmpPosition, tempPort = self.searchSnmpPosition(data.actions[0].port)
+
+
+            tempPort = self.dictActivePort[str(data.actions[0].port)]
+            snmpPosition = str(data.actions[0].port)
             
             """
             for key , port in self.listActivePort.items():
@@ -709,11 +709,13 @@ class Switch(threading.Thread):
 
                     indexData += data.header.length
             
+            """
             if count == 2:
                 count = 0
                 #print("switch ip " + self.switchIp + " send OFPT_ECHO_REQUEST")
                 packet = echoRequest().pack()
                 self.s.send(packet)
+            """
 
             """
             if data.header.message_type.name == "OFPT_ECHO_REQUEST":
