@@ -37,7 +37,7 @@ from pysnmp.entity.rfc3413.oneliner import cmdgen
 
 class Switch(threading.Thread):
     
-    def __init__( self , controllerIp , controllerPort , buffer_size , switchIp , dictAllActivePortInTDA , lock ,communityString="public"):
+    def __init__( self , controllerIp , controllerPort , buffer_size , switchIp , dictAllActivePortInTDA , lock , mininetOption, communityString="public"):
 
 
 
@@ -55,6 +55,9 @@ class Switch(threading.Thread):
         self.lock = lock
 
         self.numberOfRetransmission = 3
+
+        # for mininet
+        self.mininetOption = mininetOption
 
         # for snmpv2
         self.communityString = communityString
@@ -176,9 +179,8 @@ class Switch(threading.Thread):
                         #index = 1
                         
                         # number of port
-                        if mininetOption == 1 and len( varBindTable ) > 0 :
+                        if self.mininetOption == 1 and len( varBindTable ) > 0 :
                             del varBindTable[ len(varBindTable) - 1 ]
-
 
                         for i in varBindTable :
                                 
@@ -813,6 +815,24 @@ class Switch(threading.Thread):
             self.startConnectToController()
         finally:
             self.stopConnectToController()
+            #send del port to controller
+            for snmpPosition , port in self.dictActivePort.items():
+                packed_data = portStatus( reason=portReason.OFPPR_DELETE , desc=port )
+                packed_data = packed_data.pack()
+                self.s.send( packed_data )
+                
+            # del port from dict all active port in TDA
+            if len(self.dictActivePort.items()) > 0 :
+                try :
+                    self.lock.acquire_write()
+                    for snmpPosition , port in self.dictActivePort.items():
+                        del self.dictAllActivePortInTDA[ ( port.hw_addr , port.name ) ]
+                    self.lock.release()
+                except:
+                    self.lock.release()
+
+            del self.dictActivePort
+            self.dictActivePort = {}
 
 if __name__ == '__main__':
     dictAllActivePortInTDA = {}

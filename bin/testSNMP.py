@@ -302,7 +302,13 @@ else:
                 print('%s = %s' % (name.prettyPrint(), val.prettyPrint()))
 """
 
+"""
 test = ""
 
 if test == None:
     print(True)
+
+"""
+
+word = "   test"
+print(word.strip())

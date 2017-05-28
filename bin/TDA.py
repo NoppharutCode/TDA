@@ -3,7 +3,7 @@ Created on Mon Jan 02 20:18:09 2017
 
 @author: Noppharut
 """
-import switchComplete
+import switchFullConfig
 from rwlock import RWLock
 
 
@@ -15,22 +15,42 @@ if __name__ == '__main__':
 
     try:
         f = open("TDAConfig.txt")
-        print("5555")
+
+        #Controller IP
         controllerIP = f.readline()
         controllerIP =  controllerIP.split("=")
         controllerIP = controllerIP[1].strip()
+
+        #Controller Port
         controllerPort = f.readline()
         controllerPort = controllerPort.split("=")
         controllerPort = controllerPort[1].strip()
         
+        #Mininet Option
+        mininetOption = f.readline()
+        mininetOption = mininetOption.split("=")
+        mininetOption = mininetOption[1].strip()
+
+        #Community String
+        communityString = f.readline()
+        communityString = communityString.split("=")
+        communityString = communityString[1].strip()
+
         
+        print("Controller ip : " + controllerIP)
+        print("Controller port : " + controllerPort)
+        print("Mininet Option : " + mininetOption)
+        print("Community String : " + communityString)
         
         for switchIP in f:
-            print(switchIP)
-            thread = switchComplete.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA ,lock )
-            thread.start()
-            threads.append(thread)
-        
+            try:
+                print(switchIP.replace("\n",""))
+                thread = switchFullConfig.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA , lock , int(mininetOption) , communityString )
+                thread.start()
+                threads.append(thread)
+            except Exception as err:
+                print( "Handling run-time error : " + str(err) )
+
 
         for t in threads:
             t.join()
