@@ -3,7 +3,8 @@ Created on Mon Jan 02 20:18:09 2017
 
 @author: Noppharut
 """
-import switchFullConfig
+import switchPOX
+import switchRyu
 from rwlock import RWLock
 
 
@@ -12,10 +13,13 @@ if __name__ == '__main__':
     threads = []
     dictAllActivePortInTDA = {}
     lock = RWLock()
-
     try:
         f = open("TDAConfig.txt")
 
+        #Controller
+        controller = f.readline()
+        controller = controller.split("=")
+        controller = controller[1].strip()
         #Controller IP
         controllerIP = f.readline()
         controllerIP =  controllerIP.split("=")
@@ -45,7 +49,11 @@ if __name__ == '__main__':
         for switchIP in f:
             try:
                 print(switchIP.replace("\n",""))
-                thread = switchFullConfig.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA , lock , int(mininetOption) , communityString )
+
+                if controller.lower() == "pox":
+                    thread = switchPOX.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA , lock , int(mininetOption) , communityString )
+                else:
+                    thread = switchRyu.Switch( controllerIP , int(controllerPort) , 8192 , switchIP.replace("\n","") , dictAllActivePortInTDA , lock , int(mininetOption) , communityString )
                 thread.start()
                 threads.append(thread)
             except Exception as err:

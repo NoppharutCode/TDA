@@ -10,8 +10,11 @@ import sys
 import threading
 from rwlock import RWLock
 
+
+
 from pyof.v0x01.controller2switch.features_request import FeaturesRequest as FeaReq
 from pyof.v0x01.controller2switch.features_reply import FeaturesReply as FeaRes
+from pyof.v0x01.controller2switch.barrier_reply import BarrierReply as BarReply
 
 from pyof.v0x01.symmetric.hello import Hello as Hello
 from pyof.v0x01.common.phy_port import PhyPort as PPort
@@ -72,11 +75,13 @@ class Switch(threading.Thread):
         """
 
     def createLLDPPacket(self, srcEthernet, chassis_id, port_id ):
+       
 
         # create LLDP frame
         lldp_data = lldpMsg()
         lldp_data.chassis_id = tlvLLDP(1, 7,binaryData(chassis_id))
-        lldp_data.port_id = tlvLLDP(2, 2, binaryData(port_id))
+        #pox
+        lldp_data.port_id = tlvLLDP(2, 2, binaryData(port_id.encode(encoding='UTF-8')))
         lldp_data = lldp_data.pack()
 
         # create etherner frame
@@ -287,9 +292,10 @@ class Switch(threading.Thread):
                     else:
 
                         #init value
-                        tempPortID = ""
-                        chassisIdSubType = ""
-                        portIdSubType = ""
+                        tempChassisID = None
+                        tempPortID = None
+                        chassisIdSubType = None
+                        portIdSubType = None
                         firstData = None
                         secondData = None
                         status = None
@@ -300,11 +306,29 @@ class Switch(threading.Thread):
                             portIdSubType = i[4][1].prettyPrint()
 
                             if chassisIdSubType == "7" and portIdSubType == "2":
-                                firstData = i[0][1].prettyPrint()
-                                tempPortID = i[1][1].prettyPrint()[2:] # 00000001
+
+                                #pox
+                                tempChassisID = i[0][1].prettyPrint()
+                                tempChassisID = tempChassisID.split(":")
+                                if len(tempChassisID[1]) != 16:
+                                    tempChassisID[1] = ( "0" * (16-len(tempChassisID[1])) ) + tempChassisID[1]
+                                firstData = tempChassisID[0] + ":" + tempChassisID[1]
+                               
+                                """
+                                tempPortID = i[1][1].prettyPrint() # 00000001
+                                if len(tempPortID) != 8:
+                                    tempPortID = ( "0" * (8-len(tempPortID))) + tempPortID
+                                
                                 # change 00000001 to \x00\x00\x00\x01
                                 packer = struct.Struct('bbbb')
                                 secondData = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                                """
+                                #pox
+                                tempPortID = i[1][1].prettyPrint()
+                                tempPortID = ( "0" * (5 - len(tempPortID)) ) + tempPortID
+                                secondData = tempPortID
+                                
+   
                                 status = True                            
                             elif chassisIdSubType == "4" and portIdSubType == "3" :
                                 firstData = i[0][1].prettyPrint()
@@ -494,10 +518,17 @@ class Switch(threading.Thread):
                     self.lock.acquire_write()
                     # add port to dict all active port in tda
                     for snmpPosition, port in self.dictActivePort.items():
+                        """
                         tempPortID = str(port.port_no)
                         tempPortID = ("0" * ( 8 - len(tempPortID)) ) + tempPortID
                         packer = struct.Struct('bbbb')
                         tempPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                        """
+                        #pox
+                        tempPortID = str(port.port_no)
+                        tempPortID = ( "0" * (5 - len(tempPortID)) ) + tempPortID
+                        #pox
+
                         self.dictAllActivePortInTDA[ ( port.hw_addr, port.name ) ] = [self.datapathId , tempPortID]
                     self.lock.release()
 
@@ -553,10 +584,16 @@ class Switch(threading.Thread):
                 self.s.send( packed_data )
                 
                 try:
+                    """
                     tempPortID = str(port.port_no)
                     tempPortID = ("0" * ( 8 - len(tempPortID)) ) + tempPortID
                     packer = struct.Struct('bbbb')
                     tempPortID = packer.pack( int( tempPortID[0:2] , 16 ) , int( tempPortID[2:4] , 16 ) , int( tempPortID[4:6] , 16 ) , int( tempPortID[6:8] , 16 ))
+                    """
+                    #pox
+                    tempPortID = str(port.port_no)
+                    tempPortID = ( "0" * (5 - len(tempPortID)) ) + tempPortID
+                    #pox
                     self.lock.acquire_write()
                     # add port to dict all active port in tda
                     self.dictAllActivePortInTDA[ ( port.hw_addr , port.name ) ] = [ self.datapathId , tempPortID ]
@@ -711,8 +748,7 @@ class Switch(threading.Thread):
             return False
 
 
-    def packetHandler(self):
-        pass
+
 
     def openflowV1(self):
 
@@ -758,17 +794,26 @@ class Switch(threading.Thread):
                         
                         # OF_PACKET_IN -> controller
                         check = self.sendLLDPInOF_PACKET_IN_OPENFLOWV1( data )
-
+                        #print("send of_packet_in")
                         if check:
                             count = 0
                         else:
-                            count = 2
+                            count += 1
                         """
                         if not check :
                             print("switch ip " + self.switchIp + " send OFPT_ECHO_REQUEST")
                             packet = echoRequest().pack()
                             self.s.send(packet)
                         """
+
+                    #pox
+                    if data.header.message_type.name  == "OFPT_BARRIER_REQUEST" :
+                        count = 0
+                        packet = BarReply()
+                        packet.header.xid = data.header.xid
+                        packet = packet.pack()
+                        self.s.send(packet)
+                        
 
                     indexData += data.header.length
             
@@ -837,7 +882,7 @@ class Switch(threading.Thread):
 
 if __name__ == '__main__':
     dictAllActivePortInTDA = {}
-    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104', dictAllActivePortInTDA , RWLock())
+    tda = Switch('192.168.0.101', 6633, 8192, '192.168.0.104', dictAllActivePortInTDA , RWLock() , 0,"public")
     #tda.createOFFeatureReplyFromSnmp(111,1)
     tda.startConnectToController()
     num = input()   

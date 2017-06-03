@@ -310,5 +310,4 @@ if test == None:
 
 """
 
-word = "   test"
-print(word.strip())
+

@@ -1,6 +1,7 @@
+Controller=ryu
 Controller_Ip=192.168.0.101
 Controller_Port=6633
 MininetOption=0
 CommunityString=public
-192.168.0.105
 192.168.0.104
+192.168.0.105
